@@ -5,12 +5,20 @@
 
 // Tuning constants.
 const OBSTACLE_DISTANCE = 10        // cm — anything this close counts as an obstacle
+const OBSTACLE_HITS_NEEDED = 3      // consecutive close readings before we believe it
 const BACK_UP_TIME = 500            // ms of reversing before turning
 const MS_PER_DEGREE = 6             // turn calibration; raise it if turns come up short
-const MAX_TRUNDLE_TIME = 5000       // ms — turn anyway after this long driving forward
 const TRUNDLE_SPEED = 50            // medium
 const REVERSE_SPEED = 40
 const TURN_SPEED = 45
+
+// Shake detection. Gesture.Shake fires on trundle vibration, so instead we
+// count hard jolts: the force has to spike, fall away, and spike again,
+// SHAKE_JOLTS_NEEDED times inside SHAKE_WINDOW. Resting force is ~1024 mg.
+const SHAKE_FORCE = 2500            // mg — a spike this hard counts as one jolt
+const SHAKE_RELEASE = 1500          // mg — must fall back past this before the next jolt
+const SHAKE_JOLTS_NEEDED = 3        // jolts required to trigger the greeting
+const SHAKE_WINDOW = 1200           // ms — they all have to land inside this
 
 enum Phase {
     Forward,
@@ -23,6 +31,10 @@ let playing = false
 let phase = Phase.Forward
 let phaseUntil = 0
 let turnDirection = 1
+let obstacleHits = 0
+let shakeJolts = 0
+let shakeWindowEnds = 0
+let shakeArmed = true
 let nextHeart = 0
 let nextSound = 0
 let smallHeart = false
@@ -39,7 +51,7 @@ function redLights() {
 // the motor driver on every pass while it reads the sonar.
 function startForward() {
     phase = Phase.Forward
-    phaseUntil = input.runningTime() + MAX_TRUNDLE_TIME
+    obstacleHits = 0
     greenLights()
     cuteBot.motors(TRUNDLE_SPEED, TRUNDLE_SPEED)
 }
@@ -86,7 +98,7 @@ input.onButtonPressed(Button.B, function () {
     stopEverything()
 })
 
-input.onGesture(Gesture.Shake, function () {
+function startGreeting() {
     if (playing) {
         return
     }
@@ -126,11 +138,12 @@ input.onGesture(Gesture.Shake, function () {
     cuteBot.closeheadlights()
     basic.clearScreen()
     playing = false
-})
+}
 
 // Startup: everything off and idle until A is pressed.
 cuteBot.stopcar()
 cuteBot.closeheadlights()
+input.setAccelerometerRange(AcceleratorRange.EightG)
 music.setVolume(120)
 basic.showIcon(IconNames.Happy)
 basic.clearScreen()
@@ -150,9 +163,14 @@ basic.forever(function () {
 
     if (phase == Phase.Forward) {
         const distance = cuteBot.ultrasonic(cuteBot.SonarUnit.Centimeters)
-        // Zero means no usable echo: treat it as an obstacle to be safe.
-        const blocked = distance <= OBSTACLE_DISTANCE
-        if (blocked || now >= phaseUntil) {
+        // Zero means no echo came back — nothing in range, so keep going.
+        // A single close reading is usually noise, so wait for a few in a row.
+        if (distance > 0 && distance <= OBSTACLE_DISTANCE) {
+            obstacleHits += 1
+        } else {
+            obstacleHits = 0
+        }
+        if (obstacleHits >= OBSTACLE_HITS_NEEDED) {
             cuteBot.stopcar()
             redLights()
             music.playTone(262, 120)
@@ -196,4 +214,32 @@ basic.forever(function () {
         nextSound = input.runningTime() + randint(700, 1800)
     }
     basic.pause(50)
+})
+
+// Shake detection — deliberately hard to trigger, so trundling never sets it off.
+basic.forever(function () {
+    if (playing) {
+        shakeJolts = 0
+        basic.pause(50)
+        return
+    }
+    const now = input.runningTime()
+    if (now > shakeWindowEnds) {
+        shakeJolts = 0
+    }
+    const force = input.acceleration(Dimension.Strength)
+    if (shakeArmed && force >= SHAKE_FORCE) {
+        shakeArmed = false
+        if (shakeJolts == 0) {
+            shakeWindowEnds = now + SHAKE_WINDOW
+        }
+        shakeJolts += 1
+        if (shakeJolts >= SHAKE_JOLTS_NEEDED) {
+            shakeJolts = 0
+            startGreeting()
+        }
+    } else if (!shakeArmed && force <= SHAKE_RELEASE) {
+        shakeArmed = true
+    }
+    basic.pause(20)
 })
