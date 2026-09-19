@@ -48,47 +48,6 @@ phaseUntil = input.runningTime() + BACK_UP_TIME
 input.onButtonPressed(Button.B, function () {
     stopEverything()
 })
-input.onGesture(Gesture.Shake, function () {
-    if (playing) {
-        return
-    }
-    // Stop before playing, so it stays still when picked up.
-    running = false
-    playing = true
-    cuteBot.stopcar()
-    music.stopAllSounds()
-    cuteBot.singleheadlights(cuteBot.RGBLights.ALL, 80, 0, 100)
-    basic.showIcon(IconNames.Happy)
-    if (playing) {
-        soundExpression.giggle.playUntilDone()
-    }
-    if (playing) {
-        basic.showIcon(IconNames.Silly)
-    }
-    if (playing) {
-        music.playTone(988, 100)
-    }
-    if (playing) {
-        music.playTone(1568, 100)
-    }
-    if (playing) {
-        soundExpression.hello.playUntilDone()
-    }
-    if (playing) {
-        basic.showString("HELLO", 90)
-    }
-    if (playing) {
-        basic.showIcon(IconNames.Surprised)
-    }
-    basic.pause(350)
-    if (playing) {
-        basic.showIcon(IconNames.Happy)
-    }
-    basic.pause(350)
-    cuteBot.closeheadlights()
-    basic.clearScreen()
-    playing = false
-})
 // Each phase sets the motors once on entry, so the loop is not hammering
 // the motor driver on every pass while it reads the sonar.
 function startForward () {
