@@ -1,80 +1,22 @@
-// Robby 2000 — Cutebot obstacle-avoiding trundler.
-//
-// A starts driving, B stops everything, shake plays the greeting.
-// Driving cycles forever: forward -> back up -> shuffle-turn -> forward.
-
-// Tuning constants.
-const OBSTACLE_DISTANCE = 10        // cm — anything this close counts as an obstacle
-const OBSTACLE_HITS_NEEDED = 3      // consecutive close readings before we believe it
-const BACK_UP_TIME = 500            // ms of reversing before turning
-const MS_PER_DEGREE = 6             // turn calibration; raise it if turns come up short
-const TRUNDLE_SPEED = 50            // medium
-const REVERSE_SPEED = 40
-const TURN_SPEED = 45
-
-// Shake detection. Gesture.Shake fires on trundle vibration, so instead we
-// count hard jolts: the force has to spike, fall away, and spike again,
-// SHAKE_JOLTS_NEEDED times inside SHAKE_WINDOW. Resting force is ~1024 mg.
-const SHAKE_FORCE = 2500            // mg — a spike this hard counts as one jolt
-const SHAKE_RELEASE = 1500          // mg — must fall back past this before the next jolt
-const SHAKE_JOLTS_NEEDED = 3        // jolts required to trigger the greeting
-const SHAKE_WINDOW = 1200           // ms — they all have to land inside this
-
-enum Phase {
-    Forward,
-    BackUp,
-    ShuffleTurn
-}
-
-let running = false
-let playing = false
-let phase = Phase.Forward
-let phaseUntil = 0
-let turnDirection = 1
-let obstacleHits = 0
-let shakeJolts = 0
-let shakeWindowEnds = 0
-let shakeArmed = true
-let nextHeart = 0
-let nextSound = 0
-let smallHeart = false
-
-function greenLights() {
-    cuteBot.singleheadlights(cuteBot.RGBLights.ALL, 0, 100, 0)
-}
-
-function redLights() {
-    cuteBot.singleheadlights(cuteBot.RGBLights.ALL, 100, 0, 0)
-}
-
-// Each phase sets the motors once on entry, so the loop is not hammering
-// the motor driver on every pass while it reads the sonar.
-function startForward() {
-    phase = Phase.Forward
-    obstacleHits = 0
-    greenLights()
-    cuteBot.motors(TRUNDLE_SPEED, TRUNDLE_SPEED)
-}
-
-function startBackUp() {
-    phase = Phase.BackUp
-    phaseUntil = input.runningTime() + BACK_UP_TIME
-    cuteBot.motors(-REVERSE_SPEED, -REVERSE_SPEED)
-}
-
-function startShuffleTurn() {
+/**
+ * Robby 2000 — Cutebot obstacle-avoiding trundler.
+ * 
+ * A starts driving, B stops everything, shake plays the greeting.
+ * 
+ * Driving cycles forever: forward -> back up -> shuffle-turn -> forward.
+ */
+function startShuffleTurn () {
     phase = Phase.ShuffleTurn
-    turnDirection = randint(0, 1)
-    const angle = randint(30, 180)
+turnDirection = randint(0, 1)
+    angle = randint(30, 180)
     phaseUntil = input.runningTime() + angle * MS_PER_DEGREE
     if (turnDirection == 1) {
-        cuteBot.motors(TURN_SPEED, -TURN_SPEED)
+        cuteBot.motors(TURN_SPEED, 0 - TURN_SPEED)
     } else {
-        cuteBot.motors(-TURN_SPEED, TURN_SPEED)
+        cuteBot.motors(0 - TURN_SPEED, TURN_SPEED)
     }
 }
-
-function stopEverything() {
+function stopEverything () {
     running = false
     playing = false
     cuteBot.stopcar()
@@ -82,23 +24,31 @@ function stopEverything() {
     music.stopAllSounds()
     basic.clearScreen()
 }
-
 input.onButtonPressed(Button.A, function () {
     if (playing) {
         return
     }
-    const now = input.runningTime()
+    now = input.runningTime()
     nextHeart = now
     nextSound = now + 500
     running = true
     startForward()
 })
-
+function redLights () {
+    cuteBot.singleheadlights(cuteBot.RGBLights.ALL, 100, 0, 0)
+}
+function greenLights () {
+    cuteBot.singleheadlights(cuteBot.RGBLights.ALL, 0, 100, 0)
+}
+function startBackUp () {
+    phase = Phase.BackUp
+phaseUntil = input.runningTime() + BACK_UP_TIME
+    cuteBot.motors(0 - REVERSE_SPEED, 0 - REVERSE_SPEED)
+}
 input.onButtonPressed(Button.B, function () {
     stopEverything()
 })
-
-function startGreeting() {
+input.onGesture(Gesture.Shake, function () {
     if (playing) {
         return
     }
@@ -138,31 +88,71 @@ function startGreeting() {
     cuteBot.closeheadlights()
     basic.clearScreen()
     playing = false
+})
+// Each phase sets the motors once on entry, so the loop is not hammering
+// the motor driver on every pass while it reads the sonar.
+function startForward () {
+    phase = Phase.Forward
+obstacleHits = 0
+    greenLights()
+    cuteBot.motors(TRUNDLE_SPEED, TRUNDLE_SPEED)
 }
-
+let smallHeart = false
+let distance = 0
+let now2 = 0
+let obstacleHits = 0
+let nextSound = 0
+let nextHeart = 0
+let now = 0
+let playing = false
+let running = false
+let phaseUntil = 0
+let angle = 0
+let turnDirection = 0
+let TURN_SPEED = 0
+let REVERSE_SPEED = 0
+let TRUNDLE_SPEED = 0
+let MS_PER_DEGREE = 0
+let BACK_UP_TIME = 0
+// Tuning constants.
+// cm — anything this close counts as an obstacle
+let OBSTACLE_DISTANCE = 10
+// consecutive close readings before we believe it
+let OBSTACLE_HITS_NEEDED = 3
+// ms of reversing before turning
+BACK_UP_TIME = 500
+// turn calibration; raise it if turns come up short
+MS_PER_DEGREE = 6
+// medium
+TRUNDLE_SPEED = 50
+REVERSE_SPEED = 40
+TURN_SPEED = 45
+enum Phase {
+    Forward,
+    BackUp,
+    ShuffleTurn
+}
+let phase = Phase.Forward
+turnDirection = 1
 // Startup: everything off and idle until A is pressed.
 cuteBot.stopcar()
 cuteBot.closeheadlights()
-input.setAccelerometerRange(AcceleratorRange.EightG)
 music.setVolume(120)
 basic.showIcon(IconNames.Happy)
 basic.clearScreen()
-
 // Driving loop — runs forever, cycling through the three phases.
 basic.forever(function () {
     // Also check B while it is held down.
     if (input.buttonIsPressed(Button.B)) {
         stopEverything()
     }
-    if (!running) {
+    if (!(running)) {
         basic.pause(50)
         return
     }
-
-    const now = input.runningTime()
-
+    now2 = input.runningTime()
     if (phase == Phase.Forward) {
-        const distance = cuteBot.ultrasonic(cuteBot.SonarUnit.Centimeters)
+        distance = cuteBot.ultrasonic(cuteBot.SonarUnit.Centimeters)
         // Zero means no echo came back — nothing in range, so keep going.
         // A single close reading is usually noise, so wait for a few in a row.
         if (distance > 0 && distance <= OBSTACLE_DISTANCE) {
@@ -180,23 +170,21 @@ basic.forever(function () {
             }
         }
     } else if (phase == Phase.BackUp) {
-        if (now >= phaseUntil) {
+        if (now2 >= phaseUntil) {
             startShuffleTurn()
         }
     } else {
-        if (now >= phaseUntil) {
+        if (now2 >= phaseUntil) {
             startForward()
         }
     }
-
     // Sonar needs a breather between pings.
     basic.pause(60)
 })
-
 // Heart animation — independent of the driving phase.
 basic.forever(function () {
-    if (running && !playing && input.runningTime() >= nextHeart) {
-        smallHeart = !smallHeart
+    if (running && !(playing) && input.runningTime() >= nextHeart) {
+        smallHeart = !(smallHeart)
         if (smallHeart) {
             basic.showIcon(IconNames.SmallHeart, 0)
         } else {
@@ -206,40 +194,11 @@ basic.forever(function () {
     }
     basic.pause(50)
 })
-
 // Ambient squeaks and bleeps — also independent of the driving phase.
 basic.forever(function () {
-    if (running && !playing && input.runningTime() >= nextSound) {
+    if (running && !(playing) && input.runningTime() >= nextSound) {
         music.playTone(randint(700, 2200), 70)
         nextSound = input.runningTime() + randint(700, 1800)
     }
     basic.pause(50)
-})
-
-// Shake detection — deliberately hard to trigger, so trundling never sets it off.
-basic.forever(function () {
-    if (playing) {
-        shakeJolts = 0
-        basic.pause(50)
-        return
-    }
-    const now = input.runningTime()
-    if (now > shakeWindowEnds) {
-        shakeJolts = 0
-    }
-    const force = input.acceleration(Dimension.Strength)
-    if (shakeArmed && force >= SHAKE_FORCE) {
-        shakeArmed = false
-        if (shakeJolts == 0) {
-            shakeWindowEnds = now + SHAKE_WINDOW
-        }
-        shakeJolts += 1
-        if (shakeJolts >= SHAKE_JOLTS_NEEDED) {
-            shakeJolts = 0
-            startGreeting()
-        }
-    } else if (!shakeArmed && force <= SHAKE_RELEASE) {
-        shakeArmed = true
-    }
-    basic.pause(20)
 })
