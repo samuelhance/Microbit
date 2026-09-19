@@ -1,12 +1,91 @@
-input.onButtonPressed(Button.A, function () {
-    if (!(playing)) {
-        turn_until = 0
-        next_move = 0
-        next_heart = 0
-        next_sound = input.runningTime() + 500
-        running = true
+// Robby 2000 — Cutebot obstacle-avoiding trundler.
+//
+// A starts driving, B stops everything, shake plays the greeting.
+// Driving cycles forever: forward -> back up -> shuffle-turn -> forward.
+
+// Tuning constants.
+const OBSTACLE_DISTANCE = 10        // cm — anything this close counts as an obstacle
+const BACK_UP_TIME = 500            // ms of reversing before turning
+const MS_PER_DEGREE = 6             // turn calibration; raise it if turns come up short
+const MAX_TRUNDLE_TIME = 5000       // ms — turn anyway after this long driving forward
+const TRUNDLE_SPEED = 50            // medium
+const REVERSE_SPEED = 40
+const TURN_SPEED = 45
+
+enum Phase {
+    Forward,
+    BackUp,
+    ShuffleTurn
+}
+
+let running = false
+let playing = false
+let phase = Phase.Forward
+let phaseUntil = 0
+let turnDirection = 1
+let nextHeart = 0
+let nextSound = 0
+let smallHeart = false
+
+function greenLights() {
+    cuteBot.singleheadlights(cuteBot.RGBLights.ALL, 0, 100, 0)
+}
+
+function redLights() {
+    cuteBot.singleheadlights(cuteBot.RGBLights.ALL, 100, 0, 0)
+}
+
+// Each phase sets the motors once on entry, so the loop is not hammering
+// the motor driver on every pass while it reads the sonar.
+function startForward() {
+    phase = Phase.Forward
+    phaseUntil = input.runningTime() + MAX_TRUNDLE_TIME
+    greenLights()
+    cuteBot.motors(TRUNDLE_SPEED, TRUNDLE_SPEED)
+}
+
+function startBackUp() {
+    phase = Phase.BackUp
+    phaseUntil = input.runningTime() + BACK_UP_TIME
+    cuteBot.motors(-REVERSE_SPEED, -REVERSE_SPEED)
+}
+
+function startShuffleTurn() {
+    phase = Phase.ShuffleTurn
+    turnDirection = randint(0, 1)
+    const angle = randint(30, 180)
+    phaseUntil = input.runningTime() + angle * MS_PER_DEGREE
+    if (turnDirection == 1) {
+        cuteBot.motors(TURN_SPEED, -TURN_SPEED)
+    } else {
+        cuteBot.motors(-TURN_SPEED, TURN_SPEED)
     }
+}
+
+function stopEverything() {
+    running = false
+    playing = false
+    cuteBot.stopcar()
+    cuteBot.closeheadlights()
+    music.stopAllSounds()
+    basic.clearScreen()
+}
+
+input.onButtonPressed(Button.A, function () {
+    if (playing) {
+        return
+    }
+    const now = input.runningTime()
+    nextHeart = now
+    nextSound = now + 500
+    running = true
+    startForward()
 })
+
+input.onButtonPressed(Button.B, function () {
+    stopEverything()
+})
+
 input.onGesture(Gesture.Shake, function () {
     if (playing) {
         return
@@ -48,90 +127,73 @@ input.onGesture(Gesture.Shake, function () {
     basic.clearScreen()
     playing = false
 })
-function on_button_pressed_b () {
-    running = false
-    playing = false
-    cuteBot.stopcar()
-    cuteBot.closeheadlights()
-    music.stopAllSounds()
-    basic.clearScreen()
-}
-let small_heart = false
-let move_style = 0
-let running = false
-let next_sound = 0
-let next_heart = 0
-let next_move = 0
-let turn_until = 0
-let playing = false
-let turn_direction = 1
-// Increase this if your robot turns too close to walls.
-let obstacle_distance = 25
-input.onButtonPressed(Button.B, on_button_pressed_b)
+
+// Startup: everything off and idle until A is pressed.
 cuteBot.stopcar()
 cuteBot.closeheadlights()
 music.setVolume(120)
 basic.showIcon(IconNames.Happy)
+basic.clearScreen()
+
+// Driving loop — runs forever, cycling through the three phases.
 basic.forever(function () {
-    let now: number;
-let distance: number;
-// Also check B while it is held down.
+    // Also check B while it is held down.
     if (input.buttonIsPressed(Button.B)) {
-        on_button_pressed_b()
+        stopEverything()
     }
-    if (running) {
-        now = input.runningTime()
-        if (now < turn_until) {
-            // Short turn on the spot to face away from an obstacle.
-            if (turn_direction == 1) {
-                cuteBot.motors(30, -30)
-            } else {
-                cuteBot.motors(-30, 30)
-            }
-        } else {
-            distance = cuteBot.ultrasonic(cuteBot.SonarUnit.Centimeters)
-            // Recheck in case B or shake occurred during the reading.
+    if (!running) {
+        basic.pause(50)
+        return
+    }
+
+    const now = input.runningTime()
+
+    if (phase == Phase.Forward) {
+        const distance = cuteBot.ultrasonic(cuteBot.SonarUnit.Centimeters)
+        // Zero means no usable echo: treat it as an obstacle to be safe.
+        const blocked = distance <= OBSTACLE_DISTANCE
+        if (blocked || now >= phaseUntil) {
+            cuteBot.stopcar()
+            redLights()
+            music.playTone(262, 120)
+            // Recheck in case B or a shake landed during the tone.
             if (running) {
-                if (distance <= obstacle_distance) {
-                    // Zero means no usable echo: turn cautiously.
-                    cuteBot.stopcar()
-                    turn_direction = randint(0, 1)
-                    turn_until = input.runningTime() + randint(350, 650)
-                    next_move = 0
-                    cuteBot.singleheadlights(cuteBot.RGBLights.ALL, 100, 0, 0)
-                } else {
-                    if (now >= next_move) {
-                        move_style = randint(0, 2)
-                        next_move = now + randint(2500, 4500)
-                    }
-                    if (move_style == 0) {
-                        // Explore forwards.
-                        cuteBot.motors(35, 35)
-                    } else if (move_style == 1) {
-                        // Circle left.
-                        cuteBot.motors(18, 40)
-                    } else {
-                        // Circle right.
-                        cuteBot.motors(40, 18)
-                    }
-                    cuteBot.singleheadlights(cuteBot.RGBLights.ALL, 0, 70, 100)
-                }
+                startBackUp()
             }
         }
-        if (running && now >= next_heart) {
-            small_heart = !(small_heart)
-            if (small_heart) {
-                basic.showIcon(IconNames.SmallHeart, 0)
-            } else {
-                basic.showIcon(IconNames.Heart, 0)
-            }
-            next_heart = now + 300
+    } else if (phase == Phase.BackUp) {
+        if (now >= phaseUntil) {
+            startShuffleTurn()
         }
-        if (running && now >= next_sound) {
-            // A mixture of high squeaks and lower bleeps.
-            music.playTone(randint(700, 2200), 70)
-            next_sound = input.runningTime() + randint(700, 1800)
+    } else {
+        if (now >= phaseUntil) {
+            startForward()
         }
+    }
+
+    // Sonar needs a breather between pings.
+    basic.pause(60)
+})
+
+// Heart animation — independent of the driving phase.
+basic.forever(function () {
+    if (running && !playing && input.runningTime() >= nextHeart) {
+        smallHeart = !smallHeart
+        if (smallHeart) {
+            basic.showIcon(IconNames.SmallHeart, 0)
+        } else {
+            basic.showIcon(IconNames.Heart, 0)
+        }
+        nextHeart = input.runningTime() + 300
+    }
+    basic.pause(50)
+})
+
+// Ambient squeaks and bleeps — also independent of the driving phase.
+basic.forever(function () {
+    if (running && !playing && input.runningTime() >= nextSound) {
+        music.playTone(randint(700, 2200), 70)
+        nextSound = input.runningTime() + randint(700, 1800)
     }
     basic.pause(50)
 })
